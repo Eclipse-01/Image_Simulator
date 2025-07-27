@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片二值化工具</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定义字体 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* 柔和的背景色 */
+        }
+        /* 确保画布自适应容器宽度 */
+        canvas {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #cbd5e1; /* 边框 */
+            border-radius: 0.5rem; /* 圆角 */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* 阴影 */
+        }
+        /* 隐藏文件输入框的默认样式 */
+        input[type="file"] {
+            display: none;
+        }
+        /* 自定义文件上传按钮样式 */
+        .custom-file-upload {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            background-color: #4f46e5; /* 蓝色背景 */
+            color: white;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .custom-file-upload:hover {
+            background-color: #4338ca; /* 悬停颜色 */
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-4xl space-y-6">
+        <h1 class="text-4xl font-extrabold text-center text-gray-800 mb-6">图片二值化工具</h1>
+
+        <!-- 上传区域 -->
+        <div class="flex flex-col items-center space-y-4">
+            <label for="imageUpload" class="custom-file-upload">
+                上传图片
+            </label>
+            <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            <p id="fileNameDisplay" class="text-gray-600 text-sm"></p>
+        </div>
+
+        <!-- 阈值选择区域 -->
+        <div class="flex flex-col items-center space-y-4 pt-4">
+            <label for="thresholdSlider" class="text-lg font-semibold text-gray-700">
+                阈值: <span id="thresholdValue" class="text-indigo-600 font-bold">128</span>
+            </label>
+            <input type="range" id="thresholdSlider" min="0" max="255" value="128" step="1"
+                   class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg accent-indigo-600">
+        </div>
+
+        <!-- 图像预览区域 -->
+        <div class="flex justify-center items-center bg-gray-100 p-4 rounded-lg">
+            <canvas id="imageCanvas" class="w-full h-auto"></canvas>
+        </div>
+
+        <!-- 下载按钮 -->
+        <div class="flex justify-center pt-6">
+            <button id="downloadBtn"
+                    class="px-8 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 transition duration-300 ease-in-out transform hover:scale-105
+                           focus:outline-none focus:ring-4 focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                下载处理后的图片
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const imageUpload = document.getElementById('imageUpload');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValueSpan = document.getElementById('thresholdValue');
+        const imageCanvas = document.getElementById('imageCanvas');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const ctx = imageCanvas.getContext('2d');
+
+        let originalImage = null; // 用于存储原始图像数据
+
+        /**
+         * 处理图片上传事件
+         */
+        imageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                fileNameDisplay.textContent = `已选择文件: ${file.name}`;
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        originalImage = img; // 保存原始图片
+                        drawAndBinarizeImage(); // 绘制并二值化图片
+                        downloadBtn.disabled = false; // 启用下载按钮
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                fileNameDisplay.textContent = '';
+                originalImage = null;
+                ctx.clearRect(0, 0, imageCanvas.width, imageCanvas.height); // 清空画布
+                downloadBtn.disabled = true; // 禁用下载按钮
+            }
+        });
+
+        /**
+         * 处理阈值滑块变化事件
+         */
+        thresholdSlider.addEventListener('input', () => {
+            thresholdValueSpan.textContent = thresholdSlider.value; // 更新显示的阈值
+            if (originalImage) {
+                drawAndBinarizeImage(); // 重新绘制并二值化图片
+            }
+        });
+
+        /**
+         * 绘制原始图片并进行二值化处理
+         */
+        function drawAndBinarizeImage() {
+            if (!originalImage) return;
+
+            // 设置画布尺寸与图片相同
+            imageCanvas.width = originalImage.width;
+            imageCanvas.height = originalImage.height;
+
+            // 在画布上绘制原始图片
+            ctx.drawImage(originalImage, 0, 0);
+
+            // 获取图片像素数据
+            const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height);
+            const data = imageData.data;
+            const threshold = parseInt(thresholdSlider.value); // 获取当前阈值
+
+            // 遍历每个像素并进行二值化
+            for (let i = 0; i < data.length; i += 4) {
+                // 计算灰度值 (R+G+B)/3
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+
+                // 根据阈值设置像素为黑色或白色
+                const color = avg > threshold ? 255 : 0; // 255为白色，0为黑色
+
+                data[i] = color;     // Red
+                data[i + 1] = color; // Green
+                data[i + 2] = color; // Blue
+                // data[i + 3] 是 Alpha 通道，保持不变
+            }
+
+            // 将处理后的像素数据放回画布
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        /**
+         * 处理下载按钮点击事件
+         */
+        downloadBtn.addEventListener('click', () => {
+            if (originalImage) {
+                // 将画布内容转换为图片URL
+                const dataURL = imageCanvas.toDataURL('image/png'); // 可以选择 'image/jpeg'
+
+                // 创建一个虚拟的下载链接
+                const a = document.createElement('a');
+                a.href = dataURL;
+                a.download = `二值化图片_阈值${thresholdSlider.value}.png`; // 设置下载文件名
+                document.body.appendChild(a);
+                a.click(); // 模拟点击下载
+                document.body.removeChild(a); // 移除虚拟链接
+            }
+        });
+
+        // 初始化时禁用下载按钮
+        downloadBtn.disabled = true;
+    </script>
+</body>
+</html>

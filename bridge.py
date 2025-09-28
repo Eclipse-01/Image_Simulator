@@ -1,24 +1,21 @@
-#!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
 import asyncio
 import websockets
 import sys
+import socket
 
-# --- 配置信息 ---
+# --- 配置区 ---
 HOST = "0.0.0.0"  # 监听所有网络接口
-PORT = 8765        # 与C代码中相同的端口
-
-
-CONSUME_INTERVAL = 0.05 # 消费帧的间隔，0.05秒 = 20 FPS
+PORT = 8765       # 监听的端口
+CONSUME_INTERVAL = 0.05 # 消费帧的间隔 (0.05秒 = 20 FPS)
 
 async def handler(websocket: websockets.WebSocketServerProtocol):
     """
     处理单个WebSocket连接。
     采用生产者-消费者模式，解决高帧率输入导致的延迟累积问题。
     """
-    print(f"客户端已连接: {websocket.remote_address}", file=sys.stderr)
+    sys.stderr.write(f"[bridge.py INFO] 客户端已连接: {websocket.remote_address}\n")
     
-    # 用于在生产者和消费者之间传递最新帧的共享变量
     latest_frame = None
     consumer_task = None
 
@@ -32,58 +29,81 @@ async def handler(websocket: websockets.WebSocketServerProtocol):
         """消费者：以固定频率处理latest_frame中的最新数据。"""
         nonlocal latest_frame
         while True:
-            # 等待一个固定的时间间隔
             await asyncio.sleep(CONSUME_INTERVAL)
             
-            # 从共享变量中取走（消费）最新的一帧
             frame_to_process = latest_frame
             latest_frame = None # 取走后清空，避免重复处理
 
             if frame_to_process:
                 try:
-                    # 将取到的最新帧写入标准输出
                     sys.stdout.buffer.write(frame_to_process)
                     sys.stdout.flush()
-                    # print(f"已转发一帧 ({len(frame_to_process)}字节)", file=sys.stderr)
+                except (IOError, BrokenPipeError):
+                    sys.stderr.write("[bridge.py INFO] C程序关闭了管道，停止转发数据。\n")
+                    break
                 except Exception as e:
-                    print(f"写入stdout失败: {e}", file=sys.stderr)
-                    # 如果写入失败（比如C程序关闭了），消费者也应该停止
+                    sys.stderr.write(f"[bridge.py ERROR] 写入stdout失败: {e}\n")
                     break
     
     try:
-        # 当客户端连接时，并发启动生产者和消费者任务
         consumer_task = asyncio.create_task(consumer())
-        # producer()会一直运行，直到客户端断开连接
         await producer()
     except websockets.exceptions.ConnectionClosed as e:
-        print(f"连接已关闭: {e}", file=sys.stderr)
+        sys.stderr.write(f"[bridge.py INFO] 网页端连接已关闭: {e}\n")
     except Exception as e:
-        print(f"发生未知错误: {e}", file=sys.stderr)
+        sys.stderr.write(f"[bridge.py ERROR] 处理连接时发生未知错误: {e}\n")
     finally:
-        # 当连接结束时，确保消费者任务也被取消和清理
         if consumer_task:
             consumer_task.cancel()
-        print("客户端断开连接，处理任务已停止。", file=sys.stderr)
+            try:
+                await consumer_task # 等待任务真正取消
+            except asyncio.CancelledError:
+                pass # 捕获取消错误是正常的
+        sys.stderr.write("[bridge.py INFO] 客户端断开连接，处理任务已停止。\n")
 
 async def main():
     """
-    启动WebSocket服务器
+    启动WebSocket服务器并处理常见的网络错误
     """
-    # 获取本机IP用于显示，实际监听的是0.0.0.0
-    import socket
-    hostname = socket.gethostname()
-    ip_address = socket.gethostbyname(hostname)
-    
-    print(f"Python WebSocket中继服务器已启动", file=sys.stderr)
-    print(f" - 监听地址: ws://0.0.0.0:{PORT} (所有网络接口)", file=sys.stderr)
-    print(f" - 可尝试连接: ws://{ip_address}:{PORT} 或 ws://localhost:{PORT}", file=sys.stderr)
-    print("等待网页端连接...", file=sys.stderr)
-    
-    async with websockets.serve(handler, HOST, PORT):
-        await asyncio.Future()  # 永远运行
+    try:
+        async with websockets.serve(handler, HOST, PORT):
+            hostname = socket.gethostname()
+            try:
+                ip_address = socket.gethostbyname(hostname)
+            except socket.gaierror:
+                ip_address = "127.0.0.1" # 如果获取失败，回退到localhost
+
+            sys.stderr.write("--- Python WebSocket Bridge Started ---\n")
+            sys.stderr.write(f"- 监听地址: ws://0.0.0.0:{PORT} (所有网络接口)\n")
+            sys.stderr.write(f"- 可尝试连接: ws://{ip_address}:{PORT} 或 ws://localhost:{PORT}\n")
+            sys.stderr.write("--- 等待网页端连接... ---\n")
+            sys.stderr.write("[HINT] 如果网页端无法连接，请尝试暂时关闭系统代理（如Clash）。\n")
+            sys.stderr.flush()
+            
+            await asyncio.Future()  # 永久运行
+
+    except OSError as e:
+        if hasattr(e, 'winerror'):
+            if e.winerror == 10048:  # 端口已被占用
+                sys.stderr.write("\n[bridge.py FATAL ERROR] 启动服务器失败：端口已被占用！\n")
+                sys.stderr.write(f"  端口 {PORT} 正在被另一个程序使用。\n")
+                sys.stderr.write("  请检查任务管理器中是否已有 'python.exe' 或 'bridge.py' 进程在运行，并将其关闭。\n")
+            elif e.winerror == 10013: # 权限不足
+                sys.stderr.write("\n[bridge.py FATAL ERROR] 启动服务器失败：权限不足！\n")
+                sys.stderr.write("  请检查你的防火墙或杀毒软件，确保它们没有阻止此脚本进行网络通信。\n")
+            else:
+                sys.stderr.write(f"\n[bridge.py FATAL ERROR] 启动服务器时发生未知的网络错误: {e}\n")
+        else:
+            sys.stderr.write(f"\n[bridge.py FATAL ERROR] 启动服务器时发生未知的网络错误: {e}\n")
+            
+    except Exception as e:
+        sys.stderr.write(f"\n[bridge.py FATAL ERROR] 发生未知错误: {e}\n")
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n服务器被手动关闭。", file=sys.stderr)
+        sys.stderr.write("\n--- WebSocket Bridge 被手动关闭 ---\n")
+

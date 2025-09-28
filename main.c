@@ -1,4 +1,6 @@
 /*
+ * This file is encoded in GB 2312. If you encounter garbled characters,
+ * please set your text editor to use GB 2312 encoding to view it correctly.
  * 图像数据流读取器 (从标准输入)
  *
  * 这个C程序不再需要任何网络库。它只是一个简单的工具，
@@ -44,7 +46,7 @@ int main() {
                 }
             }
 /*----------------------------------在此处添加需要循环运行的代码--------------------------------------------------------------*/
-
+            ips200_show(&mt9v03x_image[0][0], IMAGE_WIDTH, IMAGE_HEIGHT); // 显示图像
 
 /*----------------------------------在此处添加需要循环运行的代码--------------------------------------------------------------*/
 

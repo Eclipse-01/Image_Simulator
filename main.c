@@ -1,6 +1,7 @@
 /*
  * This file is encoded in GB 2312. If you encounter garbled characters,
  * please set your text editor to use GB 2312 encoding to view it correctly.
+ * For VS Code users, add "files.autoGuessEncoding": true" in your .vscode/settings.json
  * 图像数据流读取器 (从标准输入)
  *
  * 这个C程序不再需要任何网络库。它只是一个简单的工具，
@@ -45,13 +46,26 @@ int main() {
                     mt9v03x_image[i][j] = buffer[i * IMAGE_WIDTH + j];
                 }
             }
-/*----------------------------------在此处添加需要循环运行的代码--------------------------------------------------------------*/
+            
             ips200_show(&mt9v03x_image[0][0], IMAGE_WIDTH, IMAGE_HEIGHT); // 显示图像
+            
+            // 显示一条5像素宽的彩虹，从上到下滚动
+            for (int i = 0; i < 5; i++) {
+                int row = (frame_counter + i) % IMAGE_HEIGHT;
+                for (int j = 0; j < IMAGE_WIDTH; j++) {
+                    // 计算颜色值，形成彩虹效果
+                    uint8_t color = (uint8_t)((j * 256 / IMAGE_WIDTH + i * 50) % 256);
+                    // 使用 ips200_draw_point 绘制彩色点
+                    ips200_draw_point(j, row, (color << 11) | (color << 5) | color);
+                }
+            }
+/*----------------------------------在此处添加需要循环运行的代码--------------------------------------------------------------*/
 
 /*----------------------------------在此处添加需要循环运行的代码--------------------------------------------------------------*/
 
             
             // 打印下一帧前，清除上一帧在标准错误输出的内容
+            ips200_refresh();
             fflush(stderr);
         }
     }

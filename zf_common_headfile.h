@@ -19,6 +19,8 @@ typedef unsigned int       uint32;
 typedef signed int         int32;
 
 // --- 配置信息 ---
+#define MT9V03X_W IMAGE_WIDTH
+#define MT9V03X_H IMAGE_HEIGHT
 #define IMAGE_WIDTH 188
 #define IMAGE_HEIGHT 120
 #define FRAME_SIZE (IMAGE_WIDTH * IMAGE_HEIGHT)
@@ -41,6 +43,19 @@ uint8 mt9v03x_image[IMAGE_HEIGHT][IMAGE_WIDTH];
  * @param height 图像高度
  */
 void ips200_show(uint8_t* image_data, int width, int height);
+
+/**
+ * 在指定坐标绘制一个RGB565格式的彩色点
+ * @param x 绘制点的X坐标
+ * @param y 绘制点的Y坐标
+ * @param color_rgb565 RGB565格式的颜色值
+ */
+void ips200_draw_point(int x, int y, uint16_t color_rgb565);
+
+/**
+ * 刷新窗口显示，并处理Windows消息
+ */
+void ips200_refresh(void);
 
 /**
  * 清理所有资源并关闭窗口
